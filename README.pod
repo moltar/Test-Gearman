@@ -1,0 +1,115 @@
+=pod
+
+=head1 NAME
+
+Test::Gearman - A class for testing and mocking Gearman workers.
+
+=head1 VERSION
+
+version v0.1.0
+
+=head1 SYNOPSIS
+
+ use Test::Gearman;
+
+ my $tg = Test::Gearman->new(
+     functions => {
+         reverse => sub {
+             my $job      = shift;
+             my $workload = $job->workload();
+             my $result   = reverse($workload);
+
+             return $result;
+         },
+     },
+ );
+
+ ## now you can either get a client object from Test::Gearman object
+ my $res = $tg->client->do('reverse', 'this is a test');
+
+ ## or build your own
+ use Gearman::XS::Client;
+ my $client = Gearman::XS::Client->new;
+ $client->add_server($tg->host, $tg->port);
+ my $res = $client->do('reverse', 'some other test string');
+
+=head1 DESCRIPTION
+
+Test::Gearman is a class for testing Gearman workers.
+
+This class only works with C version of gearmand, and L<Gearman::XS>
+bindings.
+
+=head1 PUBLIC ATTRIBUTES
+
+=head2 functions
+
+A HashRef of CodeRefs that stores work function names as keys and
+a CodeRef as work to be done.
+
+=head3 function_names()
+
+Returns a list of all function names.
+
+=head3 get_function($function_name)
+
+Returns a CodeRef for the given function name.
+
+=head2 gearmand_bin
+
+Path to Gearman daemon binary. If one is not provided it tries
+to find it in the C<$PATH>.
+
+B<Note>: this must be a C version of gearmand, and not the Perl version
+as they have different interfaces.
+
+You can also set the path to the binary via C<$ENV{GEARMAND}>.
+
+=head2 host
+
+Host to which Gearman daemon will bind.
+
+Default is 127.0.0.1.
+
+=head2 port
+
+Port on which gearmand runs. It is picked randomly at the start, but
+you can manually specify a port if you wish.
+
+=head2 worker_timeout
+
+Worker timeout in seconds.
+
+Default is 5.
+
+=head2 client_timeout
+
+Client timeout in seconds.
+
+Default is 5.
+
+=head2 client
+
+An instance of L<Gearman::XS::Client> that you can use to inject jobs.
+
+=head1 PRIVATE ATTRIBUTES
+
+=head2 server
+
+An instance of L<Proc::Guard> that runs gearmand server.
+
+=head2 worker
+
+An instance of L<Proc::Guard> class that runs workers.
+
+=head1 AUTHOR
+
+Roman F. <romanf@cpan.org>
+
+=head1 COPYRIGHT AND LICENSE
+
+This software is copyright (c) 2013 by L<Need Backup|http://www.needbackup.com/>.
+
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
+
