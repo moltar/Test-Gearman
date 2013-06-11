@@ -10,7 +10,7 @@ use Gearman::XS qw(:constants);
 use Gearman::XS::Worker;
 use Gearman::XS::Client;
 
-use version; our $VERSION = version->declare('v0.1.0');
+use version; our $VERSION = version->declare('v0.2.0');
 
 # ABSTRACT: A class for testing and mocking Gearman workers.
 
@@ -30,14 +30,15 @@ use version; our $VERSION = version->declare('v0.1.0');
      },
  );
 
- ## now you can either get a client object from Test::Gearman object
- my $res = $tg->client->do('reverse', 'this is a test');
+ ## now you can either get a client object
+ ## from Test::Gearman object
+ my ($ret, $result) = $tg->client->do('reverse', 'this is a test');
 
  ## or build your own
  use Gearman::XS::Client;
  my $client = Gearman::XS::Client->new;
  $client->add_server($tg->host, $tg->port);
- my $res = $client->do('reverse', 'some other test string');
+ my ($ret, $job_handle) = $client->do_background('reverse', 'hello world');
 
 =head1 DESCRIPTION
 
@@ -46,16 +47,30 @@ Test::Gearman is a class for testing Gearman workers.
 This class only works with C version of gearmand, and L<Gearman::XS>
 bindings.
 
+An actual Gearman daemon is launched, and workers are forked
+when you instantiate the class. The Gearman and workers are automatically
+shut down and destroyed when the instance of the class goes out of scope.
+
+By default Gearman daemon will listen on a random available L</port>.
+
 =head1 PUBLIC ATTRIBUTES
 
 =head2 functions
 
-A HashRef of CodeRefs that stores work function names as keys and
+A HashRef of CodeRefs that stores worker function names as keys and
 a CodeRef as work to be done.
+
+ my $tg = Test::Gearman->new(
+     functions => {
+         function_name => sub {
+             ## worker code
+         },
+     },
+ );
 
 =head3 function_names()
 
-Returns a list of all function names.
+Returns a list of all registered worker function names.
 
 =head3 get_function($function_name)
 
@@ -68,6 +83,8 @@ has functions => (
     isa      => 'HashRef[CodeRef]',
     traits   => ['Hash'],
     required => 1,
+    reader   => '_functions', ## prevent direct tampering
+    writer   => undef,
     handles  => {
         function_names => 'keys',
         get_function   => 'get',
@@ -186,6 +203,20 @@ sub _build_client {
     return $client;
 }
 
+=head2 log_file
+
+Gearman daemon log file. This is synonymous with C<--log-file> option.
+
+Default: stderr
+
+=cut
+
+has log_file => (
+    is      => 'ro',
+    isa     => 'Str',
+    default => 'stderr',
+);
+
 =head1 PRIVATE ATTRIBUTES
 
 =head2 server
@@ -212,7 +243,7 @@ sub _build_server {
     my %args = (
         'listen'   => $self->host,
         'port'     => $port,
-        'log-file' => 'stderr',
+        'log-file' => $self->log_file,
     );
     my @args = map { sprintf('--%s=%s', $_, $args{$_}) } keys %args;
 
@@ -228,7 +259,7 @@ sub _build_server {
 
 =head2 worker
 
-An instance of L<Proc::Guard> class that runs workers.
+An instance of L<Proc::Guard> that runs workers.
 
 =cut
 
@@ -238,7 +269,6 @@ has worker => (
     lazy      => 1,
     builder   => '_build_worker',
     predicate => 'has_worker',
-
 );
 
 sub _build_worker {
@@ -276,14 +306,19 @@ sub BUILD {
 
     my $bin = $self->gearmand_bin;
 
-    ## make sure the path exists first of all
-    unless ($bin && -e $bin) {
-        Carp::croak("The gearmand ($bin) does not exist.");
+    ## did we not find it?
+    unless ($bin) {
+        Carp::croak('Cannot find gearmand in your $PATH. You can set it via gearmand_bin attribute or $ENV{GEARMAND} environment variable');
+    }
+
+    ## make sure the path actually exists
+    unless (-e $bin) {
+        Carp::croak("The $bin does not exist.");
     }
 
     ## make sure it is executable
     unless (-x $bin) {
-        Carp::croak("The gearmand ($bin) is not an executable.");
+        Carp::croak("The $bin is not an executable.");
     }
 
     ## make sure we have a C binary, and not a Perl version one
@@ -292,7 +327,7 @@ sub BUILD {
     close $fh;
 
     if (substr($shebang, 0, 2) eq '#!') {
-        Carp::croak("The gearmand ($bin) appears to be a Perl version. This only support C version.");
+        Carp::croak("The gearmand ($bin) appears to be a Perl version. This module only support C version.");
     }
 
     ## launch server
