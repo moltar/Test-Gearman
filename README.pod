@@ -6,7 +6,7 @@ Test::Gearman - A class for testing and mocking Gearman workers.
 
 =head1 VERSION
 
-version v0.1.0
+version v0.2.0
 
 =head1 SYNOPSIS
 
@@ -24,14 +24,15 @@ version v0.1.0
      },
  );
 
- ## now you can either get a client object from Test::Gearman object
- my $res = $tg->client->do('reverse', 'this is a test');
+ ## now you can either get a client object
+ ## from Test::Gearman object
+ my ($ret, $result) = $tg->client->do('reverse', 'this is a test');
 
  ## or build your own
  use Gearman::XS::Client;
  my $client = Gearman::XS::Client->new;
  $client->add_server($tg->host, $tg->port);
- my $res = $client->do('reverse', 'some other test string');
+ my ($ret, $job_handle) = $client->do_background('reverse', 'hello world');
 
 =head1 DESCRIPTION
 
@@ -40,16 +41,30 @@ Test::Gearman is a class for testing Gearman workers.
 This class only works with C version of gearmand, and L<Gearman::XS>
 bindings.
 
+An actual Gearman daemon is launched, and workers are forked
+when you instantiate the class. The Gearman and workers are automatically
+shut down and destroyed when the instance of the class goes out of scope.
+
+By default Gearman daemon will listen on a random available L</port>.
+
 =head1 PUBLIC ATTRIBUTES
 
 =head2 functions
 
-A HashRef of CodeRefs that stores work function names as keys and
+A HashRef of CodeRefs that stores worker function names as keys and
 a CodeRef as work to be done.
+
+ my $tg = Test::Gearman->new(
+     functions => {
+         function_name => sub {
+             ## worker code
+         },
+     },
+ );
 
 =head3 function_names()
 
-Returns a list of all function names.
+Returns a list of all registered worker function names.
 
 =head3 get_function($function_name)
 
@@ -92,6 +107,12 @@ Default is 5.
 
 An instance of L<Gearman::XS::Client> that you can use to inject jobs.
 
+=head2 log_file
+
+Gearman daemon log file. This is synonymous with C<--log-file> option.
+
+Default: stderr
+
 =head1 PRIVATE ATTRIBUTES
 
 =head2 server
@@ -100,7 +121,7 @@ An instance of L<Proc::Guard> that runs gearmand server.
 
 =head2 worker
 
-An instance of L<Proc::Guard> class that runs workers.
+An instance of L<Proc::Guard> that runs workers.
 
 =head1 AUTHOR
 
